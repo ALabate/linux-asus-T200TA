@@ -62,7 +62,7 @@ static acpi_status
 dw_i2c_acpi_space_handler(u32 function, acpi_physical_address address,
 			u32 bits, u64 *value64,
 			void *handler_context, void *region_context)
-
+{
 	struct dw_i2c_acpi_handler_data *data = handler_context;
 	struct acpi_connection_info *info = &data->info;
 	struct dw_i2c_dev *dev = platform_get_drvdata(data->pdev);
