@@ -36,12 +36,18 @@ bool acpi_force_hot_remove;
 
 static const char *dummy_hid = "device";
 
+static LIST_HEAD(acpi_bus_dep_device_list);
 static LIST_HEAD(acpi_bus_id_list);
 static DEFINE_MUTEX(acpi_scan_lock);
 static LIST_HEAD(acpi_scan_handlers_list);
 DEFINE_MUTEX(acpi_device_lock);
 LIST_HEAD(acpi_wakeup_device_list);
 static DEFINE_MUTEX(acpi_hp_context_lock);
+
+struct acpi_dep_handle{
+	struct list_head node;
+	acpi_handle handle;
+};
 
 struct acpi_device_bus_id{
 	char bus_id[15];
@@ -2086,10 +2092,24 @@ static void acpi_scan_init_hotplug(struct acpi_device *adev)
 	}
 }
 
+static int acpi_dep_device_check(acpi_handle handle)
+{
+	struct acpi_dep_handle *dep;
+
+	list_for_each_entry(dep, &acpi_bus_dep_device_list, node)
+		if (dep->handle == handle)
+			return -EEXIST;
+
+	return 0;
+}
+
 static acpi_status acpi_bus_check_add(acpi_handle handle, u32 lvl_not_used,
 				      void *not_used, void **return_value)
 {
-	struct acpi_device *device = NULL;
+	union acpi_object *package = NULL;
+	union acpi_object *element = NULL;
+ 	struct acpi_device *device = NULL;
+	struct acpi_dep_handle *dep = NULL;
 	int type;
 	unsigned long long sta;
 	int result;
@@ -2107,9 +2127,24 @@ static acpi_status acpi_bus_check_add(acpi_handle handle, u32 lvl_not_used,
 		return AE_OK;
 	}
 
-	acpi_add_single_object(&device, handle, type, sta);
-	if (!device)
-		return AE_CTRL_DEPTH;
+	if(!acpi_dep_device_check(handle)
+	   && acpi_has_method(handle, "_BIX")
+	   && acpi_has_method(handle, "_DEP")) {
+		dep = kmalloc(sizeof(struct acpi_dep_handle), GFP_KERNEL);
+		if (!dep)
+			return AE_CTRL_DEPTH;
+		dep->handle = handle;
+		list_add_tail(&dep->node , &acpi_bus_dep_device_list);
+
+		acpi_handle_info(dep->handle,
+				"is added to dep device list.\n");
+
+		return AE_OK;
+	} else {
+		acpi_add_single_object(&device, handle, type, sta);
+		if (!device)
+			return AE_CTRL_DEPTH;
+	}
 
 	acpi_scan_init_hotplug(device);
 
@@ -2157,6 +2192,33 @@ static void acpi_default_enumeration(struct acpi_device *device)
 	if (!is_spi_i2c_slave)
 		acpi_create_platform_device(device);
 }
+
+int acpi_walk_dep_device_list(void)
+{
+	struct acpi_device *device;
+	struct acpi_dep_handle *dep;
+	acpi_status status;
+	unsigned long long sta;
+	int ret = 0;
+
+	list_for_each_entry(dep, &acpi_bus_dep_device_list, node) {
+		status = acpi_evaluate_integer(dep->handle, "_STA", NULL, &sta);
+
+		acpi_handle_info(dep->handle, "Device_STA 0x%02x\n", sta);
+		if (ACPI_FAILURE(status)) {
+			acpi_handle_warn(dep->handle,
+				"Status check failed (0x%x)\n", status);
+		} else if (sta & ACPI_STA_DEVICE_ENABLED) {
+			acpi_bus_scan(dep->handle);
+		//			acpi_bus_check_add(dep->handle, 0, NULL, (void **)&device);
+			acpi_handle_info(dep->handle,
+				"Device is readly\n");
+		}
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(acpi_walk_dep_device_list);
 
 static int acpi_scan_attach_handler(struct acpi_device *device)
 {
