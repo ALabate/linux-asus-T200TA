@@ -2258,8 +2258,8 @@ static int mmc_blk_alloc_parts(struct mmc_card *card, struct mmc_blk_data *md)
 	if (!mmc_card_mmc(card))
 		return 0;
 
-	for (idx = 0; idx < card->nr_parts; idx++) {
-		if (card->part[idx].size) {
+	for (idx = 0; idx < card->nr_parts; idx++) {) {
+		if (card->part[idx].size && !(card->part[idx].area_type & MMC_BLK_DATA_AREA_RPMB)) {
 			ret = mmc_blk_alloc_part(card, md,
 				card->part[idx].part_cfg,
 				card->part[idx].size >> 9,
