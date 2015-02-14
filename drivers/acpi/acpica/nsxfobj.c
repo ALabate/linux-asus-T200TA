@@ -47,9 +47,105 @@
 #include <acpi/acpi.h>
 #include "accommon.h"
 #include "acnamesp.h"
+#include "amlcode.h"
 
 #define _COMPONENT          ACPI_NAMESPACE
 ACPI_MODULE_NAME("nsxfobj")
+
+/*******************************************************************************
+ *
+ * FUNCTION:    acpi_get_serial_access_length
+ *
+ * PARAMETERS:  accessor_type   - The type of the protocol indicated by region
+ *                                field access attributes
+ *              access_length   - The access length of the region field
+ *
+ * RETURN:      Decoded access length
+ *
+ * DESCRIPTION: This routine returns the length of the generic_serial_bus
+ *              protocol bytes
+ *
+ ******************************************************************************/
+u32 acpi_get_serial_access_length(u32 accessor_type, u32 access_length)
+{
+	u32 length;
+
+	switch (accessor_type) {
+	case AML_FIELD_ATTRIB_QUICK:
+	case AML_FIELD_ATTRIB_SEND_RCV:
+	case AML_FIELD_ATTRIB_BYTE:
+
+		length = 1;
+		break;
+
+	case AML_FIELD_ATTRIB_WORD:
+	case AML_FIELD_ATTRIB_WORD_CALL:
+
+		length = 2;
+		break;
+
+	case AML_FIELD_ATTRIB_MULTIBYTE:
+	case AML_FIELD_ATTRIB_RAW_BYTES:
+	case AML_FIELD_ATTRIB_RAW_PROCESS:
+
+		length = access_length;
+		break;
+
+	case AML_FIELD_ATTRIB_BLOCK:
+	case AML_FIELD_ATTRIB_BLOCK_CALL:
+	default:
+
+		length = ACPI_GSBUS_BUFFER_SIZE;
+		break;
+	}
+
+	return (length);
+}
+ACPI_EXPORT_SYMBOL(acpi_get_serial_access_length);
+
+/*******************************************************************************
+ *
+ * FUNCTION:    acpi_get_id
+ *
+ * PARAMETERS:  Handle          - Handle of object whose id is desired
+ *              ret_id          - Where the id will be placed
+ *
+ * RETURN:      Status
+ *
+ * DESCRIPTION: This routine returns the owner id associated with a handle
+ *
+ ******************************************************************************/
+acpi_status acpi_get_id(acpi_handle handle, acpi_owner_id * ret_id)
+{
+	struct acpi_namespace_node *node;
+	acpi_status status;
+
+	/* Parameter Validation */
+
+	if (!ret_id) {
+		return (AE_BAD_PARAMETER);
+	}
+
+	status = acpi_ut_acquire_mutex(ACPI_MTX_NAMESPACE);
+	if (ACPI_FAILURE(status)) {
+		return (status);
+	}
+
+	/* Convert and validate the handle */
+
+	node = acpi_ns_validate_handle(handle);
+	if (!node) {
+		(void)acpi_ut_release_mutex(ACPI_MTX_NAMESPACE);
+		return (AE_BAD_PARAMETER);
+	}
+
+	*ret_id = node->owner_id;
+
+	status = acpi_ut_release_mutex(ACPI_MTX_NAMESPACE);
+	return (status);
+}
+
+ACPI_EXPORT_SYMBOL(acpi_get_id)
 
 /*******************************************************************************
  *
